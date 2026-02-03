@@ -321,7 +321,7 @@ PS.init = function( system, options ) {
 
 	// Add any other initialization code you need here.
 	PS.timerStart(4, updateGame);
-	PS.debug("Draw something and hit play!\n\nPlay around and have fun!\nMade by Andre Mata Assis.");
+	PS.debug("Draw something and hit play!\n\nMade by Andre Mata Assis.");
 };
 
 /*
