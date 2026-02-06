@@ -44,7 +44,7 @@ const levels = [];
 
 async function loadGameData() {
     try {
-        const response = await fetch("level1.txt");
+        const response = await fetch("./level1.txt");
         if (!response.ok) throw new Error("File not found");
         
         const data = await response.text();
