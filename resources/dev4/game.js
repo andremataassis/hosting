@@ -68,6 +68,7 @@ async function loadGameData() {
 //Loads level 'i' from levels[]
 function loadLevel(i){
 	WATER.clearAll();
+	DOORS.clearAll();
 	const preArgs = 3;
 	const lines = levels[i].split('\n');
 	WIDTH = parseInt(lines[0]);
@@ -83,6 +84,9 @@ function loadLevel(i){
 			else if(char === 'S') WATER.placeSource(x, y);
 			else if(char === '=') WATER.placeUnbreakableSolid(x, y);
 			else if(char === 'W') WATER.placeWinCondition(x, y);
+			else if(char === "|") DOORS.placeDoor(x, y, false);
+			else if(char === "/") DOORS.placeDoor(x, y, true);
+			else if(char === "B") DOORS.placeButton(x, y);
 			else if(char === '\n') continue;
 			x++;
 		}
@@ -97,6 +101,7 @@ var PEN ={
 
 function gameWinScreen(){
 	WATER.clearAll();
+	DOORS.clearAll();
 	WIDTH = 6;
 	HEIGHT = 4;
 	PS.gridSize(WIDTH, HEIGHT);
@@ -124,9 +129,69 @@ function triggerWin(){
 	else gameWinScreen();
 }
 
+var SOLIDS = ["Solid", "Unbreakable", "Door", "Button"];
+
 var DOORS = {
 	doorCells: [],
-	
+	buttonCells: [],
+	doorsOn: false,
+	placeDoor: function(x, y, open){
+		data = open ? 0 : "Door";
+		PS.data(x, y, data);
+		PS.borderColor(x, y, PS.COLOR_CYAN);
+		if(open){
+			PS.borderColor(x, y, PS.COLOR_WHITE);
+			PS.glyph(x, y, "/");
+		}
+		else {
+			PS.color(x, y, PS.COLOR_CYAN);
+			PS.glyph(x, y, "|");
+		}
+		DOORS.doorCells.push({x: x, y: y});
+	},
+	placeButton: function(x, y){
+		PS.data(x, y, "Button");
+		PS.borderColor(x, y, PS.COLOR_CYAN);
+		PS.glyph(x, y, "O");
+		DOORS.buttonCells.push({x: x, y: y});
+	},
+	openDoor: function(x, y){
+		PS.data(x, y, 0);
+		PS.color(x, y, PS.COLOR_WHITE);
+		PS.glyph(x, y, "/");
+	},
+	closeDoor: function(x, y){
+		PS.data(x, y, "Door");
+		PS.color(x, y, PS.COLOR_CYAN);
+		PS.glyph(x, y, "|");
+	},
+	checkDoors: function(){
+		startDoorsOn = DOORS.doorsOn;
+		for(const button of DOORS.buttonCells){
+			x = button.x;
+			y = button.y;
+			if(PS.data(x + 1, y) === "Water" || PS.data(x - 1, y) === "Water" || PS.data(x, y + 1) === "Water" || PS.data(x, y + 1) === "Water"){
+				PS.glyph(button.x, button.y, "I");
+				DOORS.doorsOn = true;
+				break;
+			}
+		}
+		if(startDoorsOn != DOORS.doorsOn){
+			for(const door of DOORS.doorCells){
+				if(PS.data(door.x, door.y) === 0){
+					DOORS.closeDoor(door.x, door.y);
+				}
+				else if(PS.data(door.x, door.y) === "Door"){
+					DOORS.openDoor(door.x, door.y);
+				}
+			}
+		}
+	},
+	clearAll: function(){
+		DOORS.doorCells = [];
+		DOORS.buttonCells = [];
+		DOORS.doorsOn = false;
+	}
 }
 
 var WATER = {
@@ -182,8 +247,8 @@ var WATER = {
 		if(PS.data(x, y + 1) === "Water"){
 			return WATER.checkExpandToSides(x, y + 1);
 		}
-		else if (PS.data(x, y + 1) === "Solid" || PS.data(x, y + 1) === "Unbreakable") {
-			return PS.data(x, y + 1) === "Solid" || PS.data(x, y + 1) === "Unbreakable";
+		else if (SOLIDS.includes(PS.data(x, y + 1))) {
+			return SOLIDS.includes(PS.data(x, y + 1));
 		}
 	},
 	//Ticks every second, makes water flow
@@ -229,7 +294,7 @@ var WATER = {
 				WATER.turnCellToWater(x, down);
 			}
 			//Solid below water
-			else if(cellBelowData === "Solid" || cellBelowData === "Unbreakable"){
+			else if(SOLIDS.includes(cellBelowData)){
 				//Makes water on the sides if possible
 				if(cellRightData === 0){
 					WATER.turnCellToWater(right, y);
@@ -261,6 +326,9 @@ var WATER = {
 			if(cellAboveData === "Win" || cellBelowData === "Win" || cellLeftData === "Win" || cellRightData === "Win"){
 				triggerWin();
 			}
+
+			//Check if doors need to be opened/closed every tick
+			DOORS.checkDoors();
 		}
 		//Update buffer into actual data
 		WATER.waterCells = Array.from(WATER.bufferCells);
@@ -415,8 +483,10 @@ PS.exit = function( x, y, data, options ) {
 	// PS.debug( "PS.exit() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch exits a bead.
-	PS.border(x, y, 1);
-	PS.borderColor(x, y, PS.COLOR_GRAY);
+	if(data !== "Door" && data !== "Button" && PS.glyph(x, y) !== "/"){
+		PS.border(x, y, 1);
+		PS.borderColor(x, y, PS.COLOR_GRAY);
+    }
 	if(data === "Unbreakable") PS.glyph(x, y, PS.DEFAULT);
 };
 
