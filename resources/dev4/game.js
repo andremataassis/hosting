@@ -40,15 +40,151 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 
 "use strict"; // Do NOT remove this directive!
 
+const levels = [];
+
+async function loadGameData() {
+    try {
+        const response = await fetch("level1.txt");
+        if (!response.ok) throw new Error("File not found");
+        
+        const data = await response.text();
+		levels.push(data);
+		loadLevel(0);
+        
+    } catch (error) {
+        PS.debug("Error loading file: " + error + "\n");
+    }
+}
+
+function loadLevel(i){
+	const lines = levels[i].split('\n');
+	WIDTH = parseInt(lines[0]);
+	HEIGHT = parseInt(lines[1]);
+	PS.gridSize(WIDTH, HEIGHT);
+
+	let x = 0;
+	let y = 0;
+	for(let i = 3; i < HEIGHT + 3; i++){
+		for(const char of lines[i]){
+			if(char === '.') WATER.placeAir(x, y);
+			else if (char === '#') WATER.placeSolid(x, y);
+			else if(char === 'S') WATER.placeSource(x, y);
+			else if(char === '\n') continue;
+			x++;
+		}
+		x = 0;
+		y++;
+	}
+}
+
+var PEN ={
+	clicking: false,
+}
+
 var WATER = {
-	source: {x: Number, y: Number},
-	waterTick: function(){
-		for(let x = 0; x < WIDTH; x++){
-			for(let y = 0; y < HEIGHT; y++){
-				
+	source: {x: 0, y: 0},
+	waterCells: [],
+	bufferCells: [],
+	placeSolid: function(x, y){
+		PS.data(x, y, "Solid");
+		PS.color(x, y, PS.COLOR_BLACK);
+	},
+	placeSource: function(x, y){
+		WATER.source = {x: x, y: y};
+		PS.data(x, y, "Water");
+		PS.color(x, y, PS.COLOR_BLUE);
+		WATER.waterCells.push(this.source);
+	},
+	turnCellToWater: function(x, y){
+		PS.data(x, y, "Water");
+		PS.color(x, y, PS.COLOR_BLUE);
+		WATER.bufferCells.push({x : x, y : y});
+	},
+	placeAir: function(x, y){
+		//remove from list if water
+		if(PS.data(x, y) === "Water"){
+			for (let i = 0; i < WATER.bufferCells.length; i++) {
+				if (WATER.bufferCells[i].x === x && WATER.bufferCells[i].y === y) {
+					WATER.bufferCells.splice(i, 1);
+					i--;
+				}
 			}
 		}
-	}
+		PS.color(x, y, PS.COLOR_WHITE);
+		PS.data(x, y, 0);
+	},
+	checkExpandToSides: function(x, y){
+		if(y + 1 >= HEIGHT) return false;
+		if(PS.data(x, y + 1) === "Water"){
+			return WATER.checkExpandToSides(x, y + 1);
+		}
+		else if (PS.data(x, y + 1) === "Solid") {
+			return PS.data(x, y + 1) === "Solid";
+		}
+	},
+	waterTick: function(){
+		WATER.bufferCells = Array.from(WATER.waterCells);
+		for(let i = 0; i < WATER.waterCells.length; i++){
+			let x = WATER.waterCells[i].x;
+			let y = WATER.waterCells[i].y;
+			
+			//get up, down, left right for x and y
+			let down = y + 1;
+			let up = y - 1;
+			let left = x - 1;
+			let right = x + 1;
+
+			//Get data of neighbors
+			let cellBelowData = null;
+			let cellAboveData = null;
+			let cellRightData = null;
+			let cellLeftData = null;
+
+			if(left >= 0){
+				//left
+				cellLeftData = PS.data(left, y);
+			}
+			if(right < WIDTH){
+				//right
+				cellRightData = PS.data(right, y);
+			}
+			if(up >= 0){
+				//above
+				cellAboveData = PS.data(x, up);
+			}
+			if(down < HEIGHT){
+				//below
+				cellBelowData = PS.data(x, down);
+			}
+
+			if(cellBelowData === 0){
+				WATER.turnCellToWater(x, down);
+			}
+			else if(cellBelowData === "Solid"){
+				if(cellRightData === 0){
+					WATER.turnCellToWater(right, y);
+				}
+				if(cellLeftData === 0){
+					WATER.turnCellToWater(left, y);
+				}
+			}
+			else if(cellBelowData == "Water"){
+				let expand = WATER.checkExpandToSides(x, y);
+				if(cellRightData === 0 && expand){
+					WATER.turnCellToWater(right, y);
+				}
+				if(cellLeftData === 0 && expand){
+					WATER.turnCellToWater(left, y);
+				}
+			}
+
+			if(x === WATER.source.x && y === WATER.source.y) continue;
+			if(cellRightData != "Water" && cellLeftData != "Water" && cellAboveData != "Water"){
+				WATER.placeAir(x, y);
+			}
+		}
+		WATER.waterCells = Array.from(WATER.bufferCells);
+	},
 };
 
 /*
@@ -77,6 +213,8 @@ PS.init = function( system, options ) {
 	// Uncomment the following code line and change
 	// the x and y parameters as needed.
 
+	loadGameData();
+
 	PS.gridSize(WIDTH, HEIGHT);
 
 	// This is also a good place to display
@@ -86,6 +224,9 @@ PS.init = function( system, options ) {
 	// change the string parameter as needed.
 
 	PS.statusText( "Game" );
+	PS.timerStart(15, WATER.waterTick)
+	
+	
 
 	// Add any other initialization code you need here.
 };
@@ -108,6 +249,10 @@ PS.touch = function( x, y, data, options ) {
 
 	// Add code here for mouse clicks/touches
 	// over a bead.
+
+	PEN.clicking = true;
+	
+	if(data != "Water") WATER.placeAir(x, y);
 };
 
 /*
@@ -126,6 +271,7 @@ PS.release = function( x, y, data, options ) {
 	// PS.debug( "PS.release() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse button/touch is released over a bead.
+	PEN.clicking = false;
 };
 
 /*
@@ -144,6 +290,9 @@ PS.enter = function( x, y, data, options ) {
 	// PS.debug( "PS.enter() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch enters a bead.
+	if(PEN.clicking && data != "Water"){
+		WATER.placeAir(x, y);
+	}
 };
 
 /*
