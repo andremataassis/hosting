@@ -1,5 +1,8 @@
 var HEIGHT = 20;
 var WIDTH = 20;
+
+const TOTAL_LEVELS = 4;
+var current_level = 0;
 /*
 game.js for Perlenspiel 3.3.x
 Last revision: 2022-03-15 (BM)
@@ -40,23 +43,32 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 
 "use strict"; // Do NOT remove this directive!
 
+function digAudio(){ PS.audioPlay("fx_blast2", {volume: 0.05}); }
+function unbreakableAudio(){ PS.audioPlay("fx_shoot7", {volume: 0.05}); }
+
 const levels = [];
 
+//Loads level text files into levels[]
 async function loadGameData() {
     try {
-        const response = await fetch("./level1.txt");
-        if (!response.ok) throw new Error("File not found");
-        
-        const data = await response.text();
-		levels.push(data);
-		loadLevel(0);
+		for(let i = 0; i < TOTAL_LEVELS; i++){
+			const response = await fetch("./level" + (i + 1) + ".txt");
+			if (!response.ok) throw new Error("File not found");
+			
+			const data = await response.text();
+			levels.push(data);
+		}
+		loadLevel(current_level);
         
     } catch (error) {
         PS.debug("Error loading file: " + error + "\n");
     }
 }
 
+//Loads level 'i' from levels[]
 function loadLevel(i){
+	WATER.clearAll();
+	const preArgs = 3;
 	const lines = levels[i].split('\n');
 	WIDTH = parseInt(lines[0]);
 	HEIGHT = parseInt(lines[1]);
@@ -64,11 +76,13 @@ function loadLevel(i){
 
 	let x = 0;
 	let y = 0;
-	for(let i = 3; i < HEIGHT + 3; i++){
+	for(let i = preArgs; i < HEIGHT + preArgs; i++){
 		for(const char of lines[i]){
 			if(char === '.') WATER.placeAir(x, y);
 			else if (char === '#') WATER.placeSolid(x, y);
 			else if(char === 'S') WATER.placeSource(x, y);
+			else if(char === '=') WATER.placeUnbreakableSolid(x, y);
+			else if(char === 'W') WATER.placeWinCondition(x, y);
 			else if(char === '\n') continue;
 			x++;
 		}
@@ -81,25 +95,74 @@ var PEN ={
 	clicking: false,
 }
 
+function gameWinScreen(){
+	WATER.clearAll();
+	WIDTH = 6;
+	HEIGHT = 4;
+	PS.gridSize(WIDTH, HEIGHT);
+	PS.color(PS.ALL, PS.ALL, PS.COLOR_GREEN);
+
+	PS.glyph(1, 1, "Y");
+	PS.glyph(2, 1, "O");
+	PS.glyph(3, 1, "U");
+	PS.glyph(1, 2, "W");
+	PS.glyph(2, 2, "I");
+	PS.glyph(3, 2, "N");
+	PS.glyph(4, 2, "!");
+}
+
+function reloadLevel(){
+	PS.audioPlay("fx_scratch");
+	loadLevel(current_level);
+}
+
+function triggerWin(){
+	PS.audioPlay("fx_bloop");
+	PS.debug("Level " + (current_level + 1) + " cleared.\n");
+	current_level += 1;
+	if(current_level < TOTAL_LEVELS) loadLevel(current_level);
+	else gameWinScreen();
+}
+
+var DOORS = {
+	doorCells: [],
+	
+}
+
 var WATER = {
 	source: {x: 0, y: 0},
 	waterCells: [],
 	bufferCells: [],
+	//Places solid block at x, y
 	placeSolid: function(x, y){
 		PS.data(x, y, "Solid");
 		PS.color(x, y, PS.COLOR_BLACK);
 	},
+	placeUnbreakableSolid: function(x, y){
+		PS.data(x, y, "Unbreakable");
+		PS.color(x, y, PS.COLOR_GRAY_DARK);
+	},
+	//Places source water at x, y
 	placeSource: function(x, y){
 		WATER.source = {x: x, y: y};
 		PS.data(x, y, "Water");
 		PS.color(x, y, PS.COLOR_BLUE);
 		WATER.waterCells.push(this.source);
+		WATER.bufferCells.push(this.source);
 	},
+	//Places win condition at x, y
+	placeWinCondition: function(x, y){
+		PS.data(x, y, "Win");
+		PS.color(x, y, PS.COLOR_YELLOW);
+		PS.glyph(x, y, "★");
+	},
+	//Turns cell at x, y to water
 	turnCellToWater: function(x, y){
 		PS.data(x, y, "Water");
 		PS.color(x, y, PS.COLOR_BLUE);
 		WATER.bufferCells.push({x : x, y : y});
 	},
+	//Places air at x, y
 	placeAir: function(x, y){
 		//remove from list if water
 		if(PS.data(x, y) === "Water"){
@@ -113,17 +176,21 @@ var WATER = {
 		PS.color(x, y, PS.COLOR_WHITE);
 		PS.data(x, y, 0);
 	},
+	//Used to check if water should expand further when in enclosed space
 	checkExpandToSides: function(x, y){
 		if(y + 1 >= HEIGHT) return false;
 		if(PS.data(x, y + 1) === "Water"){
 			return WATER.checkExpandToSides(x, y + 1);
 		}
-		else if (PS.data(x, y + 1) === "Solid") {
-			return PS.data(x, y + 1) === "Solid";
+		else if (PS.data(x, y + 1) === "Solid" || PS.data(x, y + 1) === "Unbreakable") {
+			return PS.data(x, y + 1) === "Solid" || PS.data(x, y + 1) === "Unbreakable";
 		}
 	},
+	//Ticks every second, makes water flow
 	waterTick: function(){
+		//Set buffer equal to actual data
 		WATER.bufferCells = Array.from(WATER.waterCells);
+		//Loop through actual data, making updates to buffer throughout
 		for(let i = 0; i < WATER.waterCells.length; i++){
 			let x = WATER.waterCells[i].x;
 			let y = WATER.waterCells[i].y;
@@ -157,10 +224,13 @@ var WATER = {
 				cellBelowData = PS.data(x, down);
 			}
 
+			//Air below water makes water
 			if(cellBelowData === 0){
 				WATER.turnCellToWater(x, down);
 			}
-			else if(cellBelowData === "Solid"){
+			//Solid below water
+			else if(cellBelowData === "Solid" || cellBelowData === "Unbreakable"){
+				//Makes water on the sides if possible
 				if(cellRightData === 0){
 					WATER.turnCellToWater(right, y);
 				}
@@ -168,7 +238,9 @@ var WATER = {
 					WATER.turnCellToWater(left, y);
 				}
 			}
+			//Water below water
 			else if(cellBelowData == "Water"){
+				//Makes more water to the sides if possible
 				let expand = WATER.checkExpandToSides(x, y);
 				if(cellRightData === 0 && expand){
 					WATER.turnCellToWater(right, y);
@@ -178,13 +250,29 @@ var WATER = {
 				}
 			}
 
+			//Skip this next part if source water
 			if(x === WATER.source.x && y === WATER.source.y) continue;
+			//Delete water if no water around it
 			if(cellRightData != "Water" && cellLeftData != "Water" && cellAboveData != "Water"){
 				WATER.placeAir(x, y);
 			}
+
+			//Check if we won the game!
+			if(cellAboveData === "Win" || cellBelowData === "Win" || cellLeftData === "Win" || cellRightData === "Win"){
+				triggerWin();
+			}
 		}
+		//Update buffer into actual data
 		WATER.waterCells = Array.from(WATER.bufferCells);
 	},
+	//clears everything for a new level
+	clearAll: function(){
+		WATER.bufferCells = [];
+		WATER.waterCells = [];
+		PS.data(PS.ALL, PS.ALL, PS.DEFAULT);
+		PS.glyph(PS.ALL, PS.ALL, PS.DEFAULT);
+		PS.color(PS.ALL, PS.ALL, PS.COLOR_WHITE);
+	}
 };
 
 /*
@@ -224,7 +312,7 @@ PS.init = function( system, options ) {
 	// change the string parameter as needed.
 
 	PS.statusText( "Game" );
-	PS.timerStart(15, WATER.waterTick)
+	PS.timerStart(8, WATER.waterTick)
 	
 	
 
@@ -252,7 +340,13 @@ PS.touch = function( x, y, data, options ) {
 
 	PEN.clicking = true;
 	
-	if(data != "Water") WATER.placeAir(x, y);
+	if(data == "Solid"){ 
+		digAudio();
+		WATER.placeAir(x, y);
+	}
+	else if(data === "Unbreakable"){
+		unbreakableAudio();
+	}
 };
 
 /*
@@ -290,8 +384,18 @@ PS.enter = function( x, y, data, options ) {
 	// PS.debug( "PS.enter() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch enters a bead.
-	if(PEN.clicking && data != "Water"){
+	if(PEN.clicking && data == "Solid"){
+		digAudio();
 		WATER.placeAir(x, y);
+	}
+	else if(data == "Solid"){
+		PS.border(x, y, 2);
+		PS.borderColor(x, y, PS.COLOR_RED);
+	}
+	else if(data == "Unbreakable"){
+		PS.border(x, y, 2);
+		PS.borderColor(x, y, PS.COLOR_BLACK);
+		PS.glyph(x, y, "X");
 	}
 };
 
@@ -311,6 +415,9 @@ PS.exit = function( x, y, data, options ) {
 	// PS.debug( "PS.exit() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch exits a bead.
+	PS.border(x, y, 1);
+	PS.borderColor(x, y, PS.COLOR_GRAY);
+	if(data === "Unbreakable") PS.glyph(x, y, PS.DEFAULT);
 };
 
 /*
@@ -344,6 +451,7 @@ PS.keyDown = function( key, shift, ctrl, options ) {
 	// PS.debug( "PS.keyDown(): key=" + key + ", shift=" + shift + ", ctrl=" + ctrl + "\n" );
 
 	// Add code here for when a key is pressed.
+	if(key == 114){ reloadLevel() }
 };
 
 /*
