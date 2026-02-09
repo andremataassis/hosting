@@ -1,7 +1,7 @@
 var HEIGHT = 20;
 var WIDTH = 20;
 
-const TOTAL_LEVELS = 4;
+const TOTAL_LEVELS = 5;
 var current_level = 0;
 /*
 game.js for Perlenspiel 3.3.x
@@ -170,7 +170,22 @@ var DOORS = {
 		for(const button of DOORS.buttonCells){
 			x = button.x;
 			y = button.y;
-			if(PS.data(x + 1, y) === "Water" || PS.data(x - 1, y) === "Water" || PS.data(x, y + 1) === "Water" || PS.data(x, y + 1) === "Water"){
+			if(x + 1 < WIDTH && PS.data(x + 1, y) === "Water"){
+				PS.glyph(button.x, button.y, "I");
+				DOORS.doorsOn = true;
+				break;
+			}
+			if(x - 1 > 0 && PS.data(x - 1, y) === "Water"){
+				PS.glyph(button.x, button.y, "I");
+				DOORS.doorsOn = true;
+				break;
+			}
+			if(y + 1 < HEIGHT && PS.data(x, y + 1) === "Water"){
+				PS.glyph(button.x, button.y, "I");
+				DOORS.doorsOn = true;
+				break;
+			}
+			if(y - 1 < 0 && PS.data(x, y + 1) === "Water"){
 				PS.glyph(button.x, button.y, "I");
 				DOORS.doorsOn = true;
 				break;
