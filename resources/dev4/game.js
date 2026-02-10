@@ -185,7 +185,7 @@ var DOORS = {
 				DOORS.doorsOn = true;
 				break;
 			}
-			if(y - 1 < 0 && PS.data(x, y + 1) === "Water"){
+			if(y - 1 > 0 && PS.data(x, y - 1) === "Water"){
 				PS.glyph(button.x, button.y, "I");
 				DOORS.doorsOn = true;
 				break;
