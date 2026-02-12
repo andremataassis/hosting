@@ -46,6 +46,8 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 function digAudio(){ PS.audioPlay("fx_blast2", {volume: 0.05}); }
 function unbreakableAudio(){ PS.audioPlay("fx_shoot7", {volume: 0.05}); }
 
+const WATER_BORDER_COLOR = [51, 51, 255];
+
 const levels = [];
 
 //Loads level text files into levels[]
@@ -106,6 +108,8 @@ function gameWinScreen(){
 	HEIGHT = 4;
 	PS.gridSize(WIDTH, HEIGHT);
 	PS.color(PS.ALL, PS.ALL, PS.COLOR_GREEN);
+	PS.borderColor(PS.ALL, PS.ALL, PS.COLOR_GREEN);
+	PS.data(PS.ALL, PS.ALL, "WINNNNN");
 
 	PS.glyph(1, 1, "Y");
 	PS.glyph(2, 1, "O");
@@ -227,6 +231,7 @@ var WATER = {
 		WATER.source = {x: x, y: y};
 		PS.data(x, y, "Water");
 		PS.color(x, y, PS.COLOR_BLUE);
+		PS.borderColor(x, y, PS.COLOR_BLUE);
 		WATER.waterCells.push(this.source);
 		WATER.bufferCells.push(this.source);
 	},
@@ -240,6 +245,7 @@ var WATER = {
 	turnCellToWater: function(x, y){
 		PS.data(x, y, "Water");
 		PS.color(x, y, PS.COLOR_BLUE);
+		PS.borderColor(x, y, WATER_BORDER_COLOR);
 		WATER.bufferCells.push({x : x, y : y});
 	},
 	//Places air at x, y
@@ -254,6 +260,7 @@ var WATER = {
 			}
 		}
 		PS.color(x, y, PS.COLOR_WHITE);
+		PS.borderColor(x, y, PS.COLOR_GRAY_LIGHT);
 		PS.data(x, y, 0);
 	},
 	//Used to check if water should expand further when in enclosed space
@@ -498,10 +505,18 @@ PS.exit = function( x, y, data, options ) {
 	// PS.debug( "PS.exit() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch exits a bead.
-	if(data !== "Door" && data !== "Button" && PS.glyph(x, y) !== "/"){
+	if(data == "Solid" || data == "Unbreakable"){
 		PS.border(x, y, 1);
 		PS.borderColor(x, y, PS.COLOR_GRAY);
     }
+	else if(data == 0 && PS.glyph(x, y) == 0){
+		PS.border(x, y, 1);
+		PS.borderColor(x, y, PS.COLOR_GRAY_LIGHT);
+	}
+	else if(data == "Water"){
+		PS.border(x, y, 1);
+		PS.borderColor(x, y, WATER_BORDER_COLOR);
+	}
 	if(data === "Unbreakable") PS.glyph(x, y, PS.DEFAULT);
 };
 
