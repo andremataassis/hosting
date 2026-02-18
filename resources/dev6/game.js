@@ -59,6 +59,7 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 
 function digAudio(){ PS.audioPlay("fx_blast2", {volume: 0.05}); }
 function unbreakableAudio(){ PS.audioPlay("fx_shoot7", {volume: 0.05}); }
+function fishMoveAudio(){ PS.audioPlay("fx_zurp", {volume: 0.01}); }
 
 const WATER_BORDER_COLOR = [51, 51, 255];
 
@@ -114,6 +115,157 @@ function loadLevel(i){
 	current_moves = parseInt(lines[0]);
 	PS.statusText( current_moves );
 	PS.statusColor(PS.COLOR_BLACK);
+}
+
+var FISH = {
+	color: PS.COLOR_ORANGE,
+	character: "▄",
+	pos: {x: 0, y: 0},
+	moveChance: 0,
+	path: [],
+	placeFish: function(x, y){
+		//Remove previous fish
+		if(FISH.pos.x < WIDTH && FISH.pos.y < HEIGHT){
+			PS.glyph(FISH.pos.x, FISH.pos.y, PS.DEFAULT);
+			PS.glyphColor(FISH.pos.x, FISH.pos.y, PS.COLOR_BLACK);
+		}
+
+		//Place new fish
+		PS.glyph(x, y, FISH.character);
+		PS.glyphColor(x, y, FISH.color);
+
+		//Update fish pos
+		FISH.pos = {x: x, y: y};
+		fishMoveAudio();
+	},
+	fishTick: function(x = -1, y = -1){
+		//Go to win
+		if(x != -1 && y != -1){
+			if(FISH.path.length === 0){
+				if(FISH.pos.x === x && FISH.pos.y === y) triggerWin();
+				FISH.path = FISH.pathFind(x, y);
+			} 
+			else{
+				let newPos = FISH.path.shift();
+				FISH.placeFish(newPos.x, newPos.y);
+			}
+		}
+		//Wander
+		else{
+			let chance = PS.random(10000);
+			if(chance <= FISH.moveChance){
+				let down = FISH.pos.y + 1;
+				let up = FISH.pos.y - 1;
+				let left = FISH.pos.x - 1;
+				let right = FISH.pos.x + 1;
+
+				//Get data of neighbors
+				let cellBelowData = null;
+				let cellAboveData = null;
+				let cellRightData = null;
+				let cellLeftData = null;
+
+				if(left >= 0){
+					//left
+					cellLeftData = PS.data(left, FISH.pos.y);
+				}
+				if(right < WIDTH){
+					//right
+					cellRightData = PS.data(right, FISH.pos.y);
+				}
+				if(up >= 0){
+					//above
+					cellAboveData = PS.data(FISH.pos.x, up);
+				}
+				if(down < HEIGHT){
+					//below
+					cellBelowData = PS.data(FISH.pos.x, down);
+				}
+
+				if(cellBelowData === "Water"){
+					FISH.placeFish(FISH.pos.x, down);
+				}
+				else if(cellRightData === "Water"){
+					FISH.placeFish(right, FISH.pos.y);
+				}
+				else if(cellAboveData === "Water"){
+					FISH.placeFish(FISH.pos.x, up);
+				}
+				else if(cellLeftData === "Water"){
+					FISH.placeFish(left, FISH.pos.y);
+				}
+
+				FISH.moveChance = 0;
+			}
+			else FISH.moveChance += 1;
+		}
+	},
+	/*DISCLAIMER: This function was written with the help of Gemini*/
+	pathFind: function(targetX, targetY) {
+		const start = { x: FISH.pos.x, y: FISH.pos.y, g: 0, h: 0, f: 0, parent: null };
+		const target = { x: targetX, y: targetY };
+		
+		let openList = [start];
+		let closedList = [];
+
+		//Helper -- Manhattan distance heuristic
+		const getDistance = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+
+		while (openList.length > 0) {
+			//Get node with lowest f cost
+			let currentIndex = 0;
+			for (let i = 0; i < openList.length; i++) {
+				if (openList[i].f < openList[currentIndex].f) currentIndex = i;
+			}
+			let current = openList[currentIndex];
+
+			//Check if we reached the target
+			if (current.x === target.x && current.y === target.y) {
+				let path = [];
+				let temp = current;
+				while (temp.parent) {
+					path.push({ x: temp.x, y: temp.y });
+					temp = temp.parent;
+				}
+				return path.reverse(); //Return chronological instructions
+			}
+
+			//Move current node from open to closed
+			openList.splice(currentIndex, 1);
+			closedList.push(current);
+
+			//Find valid neighbors in WATER.bufferCells
+			let neighbors = WATER.bufferCells.filter(cell => {
+				//Check if cell is adjacent to current
+				let isAdjacent = Math.abs(cell.x - current.x) + Math.abs(cell.y - current.y) === 1;
+				//Ensure it's not already evaluated
+				let isClosed = closedList.some(c => c.x === cell.x && c.y === cell.y);
+				return isAdjacent && !isClosed;
+			});
+
+			for (let neighbor of neighbors) {
+				let gScore = current.g + 1;
+				let bestG = false;
+
+				let existingOpen = openList.find(o => o.x === neighbor.x && o.y === neighbor.y);
+
+				if (!existingOpen) {
+					bestG = true;
+					neighbor.h = getDistance(neighbor, target);
+					openList.push(neighbor);
+				} else if (gScore < existingOpen.g) {
+					bestG = true;
+				}
+
+				if (bestG) {
+					neighbor.parent = current;
+					neighbor.g = gScore;
+					neighbor.f = neighbor.g + neighbor.h;
+				}
+			}
+		}
+		return []; //No path found
+	}
 }
 
 var PEN ={
@@ -254,6 +406,8 @@ var WATER = {
 		PS.borderColor(x, y, PS.COLOR_BLUE);
 		WATER.waterCells.push(this.source);
 		WATER.bufferCells.push(this.source);
+
+		FISH.placeFish(x, y);
 	},
 	//Places win condition at x, y
 	placeWinCondition: function(x, y){
@@ -368,8 +522,10 @@ var WATER = {
 
 			//Check if we won the game!
 			if(cellAboveData === "Win" || cellBelowData === "Win" || cellLeftData === "Win" || cellRightData === "Win"){
-				triggerWin();
+				FISH.fishTick(x, y);
 			}
+			//Otherwise let fish wander
+			else FISH.fishTick();
 
 			//Check if doors need to be opened/closed every tick
 			DOORS.checkDoors();
@@ -425,8 +581,6 @@ PS.init = function( system, options ) {
 
 	PS.statusText( current_moves );
 	PS.timerStart(8, WATER.waterTick)
-	
-	
 
 	// Add any other initialization code you need here.
 };
