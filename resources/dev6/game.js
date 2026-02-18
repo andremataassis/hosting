@@ -308,6 +308,7 @@ function gameWinScreen(){
 function reloadLevel(){
 	if(PS.data(0, 0) === "WIN") return;
 	PS.audioPlay("fx_scratch");
+	FISH.path = [];
 	loadLevel(current_level);
 }
 
