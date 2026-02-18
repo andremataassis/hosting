@@ -1,7 +1,7 @@
 var HEIGHT = 20;
 var WIDTH = 20;
 
-const TOTAL_LEVELS = 5;
+const TOTAL_LEVELS = 7;
 var current_level = 0;
 
 var tot_moves = 4;
@@ -60,6 +60,7 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 function digAudio(){ PS.audioPlay("fx_blast2", {volume: 0.05}); }
 function unbreakableAudio(){ PS.audioPlay("fx_shoot7", {volume: 0.05}); }
 function fishMoveAudio(){ PS.audioPlay("fx_zurp", {volume: 0.01}); }
+function fishHintAudio(){ PS.audioPlay("fx_coin8", {volume: 0.06}); }
 
 const WATER_BORDER_COLOR = [51, 51, 255];
 
@@ -84,6 +85,9 @@ async function loadGameData() {
 
 //Loads level 'i' from levels[]
 function loadLevel(i){
+	PS.debugClear();
+	PS.debugClose();
+	
 	WATER.clearAll();
 	DOORS.clearAll();
 	const preArgs = 4;
@@ -123,12 +127,17 @@ var FISH = {
 	pos: {x: 0, y: 0},
 	moveChance: 0,
 	path: [],
+	prevGlyph: "",
+	dontMove: false,
 	placeFish: function(x, y){
 		//Remove previous fish
 		if(FISH.pos.x < WIDTH && FISH.pos.y < HEIGHT){
-			PS.glyph(FISH.pos.x, FISH.pos.y, PS.DEFAULT);
+			PS.glyph(FISH.pos.x, FISH.pos.y, FISH.prevGlyph);
 			PS.glyphColor(FISH.pos.x, FISH.pos.y, PS.COLOR_BLACK);
 		}
+
+		//Store glyph at new location
+		FISH.prevGlyph = PS.glyph(x, y);
 
 		//Place new fish
 		PS.glyph(x, y, FISH.character);
@@ -137,6 +146,8 @@ var FISH = {
 		//Update fish pos
 		FISH.pos = {x: x, y: y};
 		fishMoveAudio();
+
+		FISH.dontMove = false;
 	},
 	fishTick: function(x = -1, y = -1){
 		//Go to win
@@ -152,6 +163,8 @@ var FISH = {
 		}
 		//Wander
 		else{
+			if(FISH.dontMove) return;
+			
 			let chance = PS.random(10000);
 			if(chance <= FISH.moveChance){
 				let down = FISH.pos.y + 1;
@@ -341,28 +354,30 @@ var DOORS = {
 		PS.color(x, y, PS.COLOR_CYAN);
 		PS.glyph(x, y, "|");
 	},
+	updateButtons: function(){
+		for(const button of DOORS.buttonCells){
+			if(DOORS.doorsOn) PS.glyph(button.x, button.y, "I");
+			else PS.glyph(button.x, button.y, "O");
+		}
+	},
 	checkDoors: function(){
 		startDoorsOn = DOORS.doorsOn;
 		for(const button of DOORS.buttonCells){
 			x = button.x;
 			y = button.y;
 			if(x + 1 < WIDTH && PS.data(x + 1, y) === "Water"){
-				PS.glyph(button.x, button.y, "I");
 				DOORS.doorsOn = true;
 				break;
 			}
 			if(x - 1 > 0 && PS.data(x - 1, y) === "Water"){
-				PS.glyph(button.x, button.y, "I");
 				DOORS.doorsOn = true;
 				break;
 			}
 			if(y + 1 < HEIGHT && PS.data(x, y + 1) === "Water"){
-				PS.glyph(button.x, button.y, "I");
 				DOORS.doorsOn = true;
 				break;
 			}
 			if(y - 1 > 0 && PS.data(x, y - 1) === "Water"){
-				PS.glyph(button.x, button.y, "I");
 				DOORS.doorsOn = true;
 				break;
 			}
@@ -377,6 +392,8 @@ var DOORS = {
 				}
 			}
 		}
+
+		DOORS.updateButtons();
 	},
 	clearAll: function(){
 		DOORS.doorCells = [];
@@ -435,6 +452,7 @@ var WATER = {
 		}
 		PS.color(x, y, PS.COLOR_WHITE);
 		PS.borderColor(x, y, PS.COLOR_GRAY_LIGHT);
+		PS.glyph(x, y, PS.DEFAULT);
 		PS.data(x, y, 0);
 		current_moves -= 1;
 		PS.statusText( current_moves );
@@ -614,6 +632,11 @@ PS.touch = function( x, y, data, options ) {
 	else if(data === "Unbreakable"){
 		unbreakableAudio();
 	}
+	else if(x === FISH.pos.x && y === FISH.pos.y){
+		PS.debugClear();
+		fishHintAudio();
+		PS.debug("Fish: Get me to the star!");	
+	}
 };
 
 /*
@@ -664,6 +687,11 @@ PS.enter = function( x, y, data, options ) {
 		PS.border(x, y, 2);
 		PS.borderColor(x, y, PS.COLOR_BLACK);
 		PS.glyph(x, y, "X");
+	}
+	else if(x === FISH.pos.x && y === FISH.pos.y){
+		PS.border(x, y, 2);
+		PS.borderColor(x, y, FISH.color);
+		FISH.dontMove = true;
 	}
 };
 
