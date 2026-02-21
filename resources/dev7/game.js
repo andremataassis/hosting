@@ -1,7 +1,8 @@
-var WIDTH = 20;
-var HEIGHT = 20;
+var WIDTH = 25;
+var HEIGHT = 25;
 
 const GHOST = 0x1F47B;
+const WALL_COLOR = PS.COLOR_GRAY_DARK;
 
 /*
 game.js for Perlenspiel 3.3.x
@@ -110,7 +111,7 @@ function drawCircle(x, y, diameter, color, borderColor = color){
 		squareLength = 1;
 	}
 	//3 x 3
-	else if(diameter <= 5){
+	else if(diameter <= 6){
 		squareLength = 3;
 	}
 	//5 x 5
@@ -120,7 +121,22 @@ function drawCircle(x, y, diameter, color, borderColor = color){
 	
 	return_array.push(...drawSquare(x, y, squareLength, color, borderColor = color));
 
-	if(diameter == 1 || diameter == 4 || diameter == 6);
+	if(diameter == 1 || diameter == 4);
+	else if(diameter == 6){
+		let mod = Math.floor(squareLength / 2)
+		//top
+		return_array.push(...drawLine({x: (x - mod - 1), y: (y - mod - 1)},
+		{x: (x + mod), y: (y - mod - 1)}, color, borderColor));
+		//bottom
+		return_array.push(...drawLine({x: (x - mod - 1), y: (y + mod + 1)},
+		{x: (x + mod), y: (y + mod + 1)}, color, borderColor));
+		//left 
+		return_array.push(...drawLine({x: x - mod - 1, y: y - mod - 1},
+		{x: x - mod - 1, y: y + mod}, color, borderColor));
+		//right
+		return_array.push(...drawLine({x: x + mod + 1, y: y - mod - 1},
+		{x: x + mod + 1, y: y + mod}, color, borderColor));
+	}
 	else if(diameter == 2 || diameter == 3){
 		if (checkBounds(x + 1, y)){ 
 			PS.color(x + 1, y, color);
@@ -162,13 +178,22 @@ function drawCircle(x, y, diameter, color, borderColor = color){
 	return return_array;
 }
 
+function masterTick(){
+	FLASHLIGHT.lightTick();
+	GHOST_SPAWNER.ghostTick();
+	WALL_SPAWNER.wallTick();
+}
+
 var FLASHLIGHT = {
-	light_diameter : 5,
+	light_diameter : 10,
+	light_mod: 90,
 	last: null,
+	all_on: false,
 	lightUp: function(x, y){
+		if(FLASHLIGHT.all_on) return;
 		FLASHLIGHT.lightOffLast();
 
-		let beads = drawCircle(x, y, FLASHLIGHT.light_diameter, PS.COLOR_WHITE);
+		let beads = drawCircle(x, y, FLASHLIGHT.light_diameter, PS.COLOR_GRAY_LIGHT);
 		FLASHLIGHT.updateBeadData(beads, "Lit");
 		FLASHLIGHT.last = {x: x, y: y, d: FLASHLIGHT.light_diameter};
 	},
@@ -181,7 +206,185 @@ var FLASHLIGHT = {
 		for(const bead of beads){
 			PS.data(bead.x, bead.y, newData);
 		}
+	},
+	lightUpAll: function(){
+		let beads = drawSquare(Math.floor(WIDTH/2), Math.floor(HEIGHT/2), WIDTH, PS.COLOR_GRAY_LIGHT);
+		FLASHLIGHT.updateBeadData(beads, "Lit");
+
+		FLASHLIGHT.all_on = true;
+	},
+	lightOffAll: function(){
+		let beads = drawSquare(Math.floor(WIDTH/2), Math.floor(HEIGHT/2), WIDTH, PS.COLOR_BLACK);
+		FLASHLIGHT.updateBeadData(beads, PS.DEFAULT);
+
+		FLASHLIGHT.all_on = false;
+	},
+	lightTick: function(){
+		FLASHLIGHT.light_mod -= 0.08;
+		FLASHLIGHT.light_mod = clamp(FLASHLIGHT.light_mod, 0, 90);
+		
+		let start = FLASHLIGHT.light_diameter;
+		
+		FLASHLIGHT.light_diameter = Math.floor(FLASHLIGHT.light_mod / 10);
+
+		if(start != FLASHLIGHT.light_diameter && FLASHLIGHT.light_diameter < 7) {
+			PS.audioPlay("fx_bloink", {volume: 0.05});
+			if(FLASHLIGHT.last) FLASHLIGHT.lightUp(FLASHLIGHT.last.x, FLASHLIGHT.last.y)
+		}
+	},
+	charge:function(){
+		FLASHLIGHT.light_mod += 0.3;
+		FLASHLIGHT.light_mod = clamp(FLASHLIGHT.light_mod, 0, 90);
+
+		let start = FLASHLIGHT.light_diameter;
+
+		FLASHLIGHT.light_diameter = Math.floor(FLASHLIGHT.light_mod / 10);
+
+		if(start !== FLASHLIGHT.light_diameter && FLASHLIGHT.light_diameter !== 9) {
+			FLASHLIGHT.light_mod += 5;
+			PS.audioPlay("fx_blip");
+			if(FLASHLIGHT.last) FLASHLIGHT.lightUp(FLASHLIGHT.last.x, FLASHLIGHT.last.y)
+		}
 	}
+}
+
+var GHOST_SPAWNER = {
+	ghosts: [],
+	counter: 0,
+	cooldown: 50,
+	placeGhost: function(x, y){
+		GHOST_SPAWNER.ghosts.push({x: x, y: y});
+	},
+	isGhost: function(x, y){
+		for(const ghost of GHOST_SPAWNER.ghosts){
+			if(ghost.x == x && ghost.y == y){
+				return true;
+			}
+		}
+		return false;
+	},
+	removeGhost: function(x, y){
+		for(let i = 0; i < GHOST_SPAWNER.ghosts.length; i++){
+			ghost = GHOST_SPAWNER.ghosts[i];
+			if(ghost.x == x && ghost.y == y){
+				PS.glyph(x, y, PS.DEFAULT);
+				GHOST_SPAWNER.ghosts.splice(i, 1);
+				playRandomGhostSound();
+				return;
+			}
+		}
+	},
+	ghostTick: function(){
+		//Show lit ghosts
+		for(const ghost of GHOST_SPAWNER.ghosts){
+			if(PS.data(ghost.x, ghost.y) === "Lit"){
+				PS.glyph(ghost.x, ghost.y, GHOST);
+			}
+			else{
+				PS.glyph(ghost.x, ghost.y, PS.DEFAULT);
+			}
+		}
+
+		GHOST_SPAWNER.counter++;
+		GHOST_SPAWNER.spawnGhosts();
+	},
+	spawnGhosts: function(){
+		if(GHOST_SPAWNER.counter < GHOST_SPAWNER.cooldown) return;
+		
+		let x = PS.random(WIDTH - 2);
+		let y = PS.random(HEIGHT - 2);
+		while(WALL_SPAWNER.isWall(x, y)){
+			x = PS.random(WIDTH - 2);
+			y = PS.random(HEIGHT - 2);
+		}
+		GHOST_SPAWNER.placeGhost(x, y);
+		GHOST_SPAWNER.counter = 0;
+	}
+}
+
+var WALL_SPAWNER = {
+	walls: [],
+	placeWall: function(x, y){
+		WALL_SPAWNER.walls.push({x: x, y: y});
+	},
+	isWall: function(x, y){
+		for(const wall of WALL_SPAWNER.walls){
+			if(wall.x == x && wall.y == y){
+				return true;
+			}
+		}
+		return false;
+	},
+	wallTick: function(){
+		//Show lit walls
+		for(const wall of WALL_SPAWNER.walls){
+			if(PS.data(wall.x, wall.y) === "Lit"){
+				PS.color(wall.x, wall.y, WALL_COLOR);
+				PS.borderColor(wall.x, wall.y, WALL_COLOR);
+			}
+			else{
+				PS.color(wall.x, wall.y, PS.COLOR_BLACK);
+				PS.borderColor(wall.x, wall.y, PS.COLOR_BLACK);
+			}
+		}
+	},
+	generateLayout: function(){
+		for(const wall of WALL_SPAWNER.walls){
+			PS.color(wall.x, wall.y, PS.COLOR_GRAY_LIGHT);
+			PS.borderColor(wall.x, wall.y, PS.COLOR_GRAY_LIGHT);
+		}
+		WALL_SPAWNER.walls = [];
+		WALL_SPAWNER.roomRecursion({x: 0, y: 0}, {x: WIDTH - 1, y: HEIGHT - 1}, "X")
+	},
+	roomRecursion: function(topLeft, botRight, split){
+		let MIN_SIZE = 6;
+		
+		let width = Math.abs(botRight.x - topLeft.x);
+		let height = Math.abs(botRight.y - topLeft.y);
+
+		//Done if <= whatever number
+		if (width <= MIN_SIZE || height <= MIN_SIZE) {
+			let shortenVert = height <= 3;
+			let shortenHorz = width <= 3;
+
+			// Draw the box
+			for (let x = topLeft.x; x <= botRight.x; x++) {
+				if(!shortenVert || topLeft.y == 0) WALL_SPAWNER.placeWall(x, topLeft.y);
+				if(botRight.y == HEIGHT - 1) WALL_SPAWNER.placeWall(x, botRight.y);
+			}
+			for (let y = topLeft.y; y <= botRight.y; y++) {
+				if(!shortenHorz || topLeft.x == 0) WALL_SPAWNER.placeWall(topLeft.x, y);
+				if(botRight.x == WIDTH - 1) WALL_SPAWNER.placeWall(botRight.x, y);
+			}
+			return 1;
+		}
+
+		if(split === "X"){
+			let minSplit = topLeft.x + MIN_SIZE;
+        	let maxSplit = botRight.x - MIN_SIZE;
+			
+			let x_split = Math.floor(Math.random() * (maxSplit - minSplit + 1)) + minSplit;
+			let newTopLeft = {x: x_split + 1, y: topLeft.y};
+			let newBotRight = {x: x_split, y: botRight.y};
+			return WALL_SPAWNER.roomRecursion(topLeft, newBotRight, "Y") + WALL_SPAWNER.roomRecursion(newTopLeft, botRight, "Y");
+		}
+		else if(split === "Y"){
+			let minSplit = topLeft.y + MIN_SIZE;
+        	let maxSplit = botRight.y - MIN_SIZE;
+
+			let y_split = Math.floor(Math.random() * (maxSplit - minSplit + 1)) + minSplit;
+			let newBotRight = { x: botRight.x, y: y_split };
+			let newTopLeft  = { x: topLeft.x,  y: y_split + 1 };
+			return WALL_SPAWNER.roomRecursion(topLeft, newBotRight, "X") + 
+				WALL_SPAWNER.roomRecursion(newTopLeft, botRight, "X");
+		}
+	}
+}
+
+var last_i = 1;
+function playRandomGhostSound(){
+	if(last_i > 3) last_i = 1;
+	PS.audioPlay("ghostdeath-0" + last_i++, {path: "./audio/", fileTypes: ["wav"]});
 }
 
 /*
@@ -221,8 +424,12 @@ PS.init = function( system, options ) {
 	PS.gridColor(PS.COLOR_BLACK);
 	PS.statusColor(PS.COLOR_WHITE);
 
-	PS.fade(PS.ALL, PS.ALL, 10);
-	PS.borderFade(PS.ALL, PS.ALL, 10);
+	PS.fade(PS.ALL, PS.ALL, 5);
+	PS.borderFade(PS.ALL, PS.ALL, 5);
+
+	PS.timerStart(2, masterTick);
+
+	WALL_SPAWNER.generateLayout();
 	// This is also a good place to display
 	// your game title or a welcome message
 	// in the status line above the grid.
@@ -252,6 +459,10 @@ PS.touch = function( x, y, data, options ) {
 
 	// Add code here for mouse clicks/touches
 	// over a bead.
+
+	if(GHOST_SPAWNER.isGhost(x, y)){
+		GHOST_SPAWNER.removeGhost(x, y);
+	}
 };
 
 /*
@@ -290,6 +501,9 @@ PS.enter = function( x, y, data, options ) {
 	// Add code here for when the mouse cursor/touch enters a bead.
 
 	FLASHLIGHT.lightUp(x, y);
+	if(GHOST_SPAWNER.isGhost(x, y)){
+		PS.borderColor(x, y, PS.COLOR_RED);
+	}
 };
 
 /*
@@ -336,19 +550,15 @@ This function doesn't have to do anything. Any value returned is ignored.
 */
 
 PS.keyDown = function( key, shift, ctrl, options ) {
-	// Uncomment the following code line to inspect first three parameters:
-
-	// PS.debug( "PS.keyDown(): key=" + key + ", shift=" + shift + ", ctrl=" + ctrl + "\n" );
-	if(key === PS.KEY_ARROW_RIGHT){
-		FLASHLIGHT.light_diameter++;
-		PS.debug(FLASHLIGHT.light_diameter + "\n");
-	}
-	else if(key == PS.KEY_ARROW_LEFT){
-		FLASHLIGHT.light_diameter--;
-		PS.debug(FLASHLIGHT.light_diameter + "\n");
-	}
-
 	// Add code here for when a key is pressed.
+
+	//Turn lights on/off (for debugging)
+	if(key == PS.KEY_SPACE && shift == true){
+		FLASHLIGHT.all_on ? FLASHLIGHT.lightOffAll() : FLASHLIGHT.lightUpAll();
+	}
+	if(key == PS.KEY_ENTER){
+		WALL_SPAWNER.generateLayout();
+	}
 };
 
 /*
@@ -381,11 +591,12 @@ NOTE: Currently, only mouse wheel events are reported, and only when the mouse c
 PS.input = function( sensors, options ) {
 	// Uncomment the following code lines to inspect first parameter:
 
-//	 var device = sensors.wheel; // check for scroll wheel
-//
-//	 if ( device ) {
-//	   PS.debug( "PS.input(): " + device + "\n" );
-//	 }
+	var device = sensors.wheel; // check for scroll wheel
+
+	if ( device ) {
+		FLASHLIGHT.charge();
+		PS.audioPlay("fx_click", {volume: 0.01});
+	}
 
 	// Add code here for when an input event is detected.
 };
