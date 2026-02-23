@@ -269,7 +269,7 @@ var GHOST_SPAWNER = {
 			if(ghost.x == x && ghost.y == y){
 				PS.glyph(x, y, PS.DEFAULT);
 				GHOST_SPAWNER.ghosts.splice(i, 1);
-				playRandomGhostSound();
+				playRandomGhostSpawnSound();
 				return;
 			}
 		}
@@ -297,6 +297,8 @@ var GHOST_SPAWNER = {
 			x = PS.random(WIDTH - 2);
 			y = PS.random(HEIGHT - 2);
 		}
+		
+		playRandomGhostSpawnSound();
 		GHOST_SPAWNER.placeGhost(x, y);
 		GHOST_SPAWNER.counter = 0;
 	}
@@ -382,9 +384,15 @@ var WALL_SPAWNER = {
 }
 
 var last_i = 1;
-function playRandomGhostSound(){
+function playRandomGhostSpawnSound(){
 	if(last_i > 3) last_i = 1;
 	PS.audioPlay("ghostdeath-0" + last_i++, {path: "./audio/", fileTypes: ["wav"]});
+}
+
+var last_s_i = 1;
+function playRandomGhostSpawnSound(){
+	if(last_s_i > 2) last_s_i = 1;
+	PS.audioPlay("ghostSpawn-0" + last_s_i++, {path: "./audio/", fileTypes: ["wav"]});
 }
 
 /*
