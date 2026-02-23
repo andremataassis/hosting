@@ -42,6 +42,9 @@ If you don't use JSHint (or are using it with a configuration file), you can saf
 /* jshint browser : true, devel : true, esversion : 6, freeze : true */
 /* globals PS : true */
 
+//False = not playing, true = playing
+var gameState = false;
+
 "use strict"; // Do NOT remove this directive!
 
 function clamp(value, min, max) {
@@ -178,6 +181,7 @@ function drawCircle(x, y, diameter, color, borderColor = color){
 	return return_array;
 }
 
+var masterID = "";
 function masterTick(){
 	FLASHLIGHT.lightTick();
 	GHOST_SPAWNER.ghostTick();
@@ -248,10 +252,21 @@ var FLASHLIGHT = {
 	}
 }
 
+var SCORE ={
+	score: 0,
+	incrementScore(){
+		SCORE.score++;
+		PS.statusText(SCORE.score);
+	}
+}
+
 var GHOST_SPAWNER = {
 	ghosts: [],
 	counter: 0,
 	cooldown: 50,
+	clear: function(){
+		ghosts = [];
+	},
 	placeGhost: function(x, y){
 		GHOST_SPAWNER.ghosts.push({x: x, y: y});
 	},
@@ -268,8 +283,10 @@ var GHOST_SPAWNER = {
 			ghost = GHOST_SPAWNER.ghosts[i];
 			if(ghost.x == x && ghost.y == y){
 				PS.glyph(x, y, PS.DEFAULT);
+				PS.borderColor(x, y, PS.COLOR_GRAY_LIGHT);
 				GHOST_SPAWNER.ghosts.splice(i, 1);
-				playRandomGhostSpawnSound();
+				playRandomGhostDeathSound();
+				SCORE.incrementScore();
 				return;
 			}
 		}
@@ -287,6 +304,10 @@ var GHOST_SPAWNER = {
 
 		GHOST_SPAWNER.counter++;
 		GHOST_SPAWNER.spawnGhosts();
+
+		if(GHOST_SPAWNER.ghosts.length >= 15){
+			gameOver();
+		}
 	},
 	spawnGhosts: function(){
 		if(GHOST_SPAWNER.counter < GHOST_SPAWNER.cooldown) return;
@@ -306,6 +327,9 @@ var GHOST_SPAWNER = {
 
 var WALL_SPAWNER = {
 	walls: [],
+	clear: function(){
+		walls = [];
+	},
 	placeWall: function(x, y){
 		WALL_SPAWNER.walls.push({x: x, y: y});
 	},
@@ -384,7 +408,7 @@ var WALL_SPAWNER = {
 }
 
 var last_i = 1;
-function playRandomGhostSpawnSound(){
+function playRandomGhostDeathSound(){
 	if(last_i > 3) last_i = 1;
 	PS.audioPlay("ghostdeath-0" + last_i++, {path: "./audio/", fileTypes: ["wav"]});
 }
@@ -393,6 +417,80 @@ var last_s_i = 1;
 function playRandomGhostSpawnSound(){
 	if(last_s_i > 2) last_s_i = 1;
 	PS.audioPlay("ghostSpawn-0" + last_s_i++, {path: "./audio/", fileTypes: ["wav"]});
+}
+
+function menuScreen(){
+	PS.statusText( "Ghost Game" );
+	
+	GHOST_SPAWNER.clear();
+	WALL_SPAWNER.clear();
+	PS.gridSize(5, 5);
+
+	setGridOptions();
+
+	PS.color(2, 2, PS.COLOR_GRAY_LIGHT);
+	PS.data(2, 2, "Play");
+	PS.glyph(2, 2, "▶");
+}
+
+function gameOver(){
+	FLASHLIGHT.lightUpAll();
+	PS.timerStop(masterID);
+	gameState = false;
+}
+
+var TIMER ={
+	i : 0,
+	until: 0,
+	timerReference: "",
+	func: function(){},
+	tick: function(){
+		TIMER.i++;
+		if(TIMER.i == TIMER.until){
+			PS.timerStop(TIMER.timerReference);
+			TIMER.func();
+		}
+	}
+}
+
+function introSequence(){
+	WALL_SPAWNER.generateLayout();
+	FLASHLIGHT.lightUpAll();
+
+	PS.fade(PS.ALL, PS.ALL, 80);
+	PS.borderFade(PS.ALL, PS.ALL, 80);
+
+	TIMER.until = 3;
+	TIMER.func = setFadeToNormal;
+	TIMER.timerReference = PS.timerStart(60, TIMER.tick);
+}
+
+function setFadeToNormal(){
+	FLASHLIGHT.lightOffAll();
+	
+	PS.fade(PS.ALL, PS.ALL, 5);
+	PS.borderFade(PS.ALL, PS.ALL, 5);
+}
+
+function playButton(){
+	PS.gridSize(WIDTH, HEIGHT);
+	setGridOptions();
+	PS.statusText("0");
+	
+	masterID = PS.timerStart(2, masterTick);
+	gameState = true;
+
+	introSequence();
+}
+
+function setGridOptions(){
+	PS.color(PS.ALL, PS.ALL, PS.COLOR_BLACK);
+	PS.borderColor(PS.ALL, PS.ALL, PS.COLOR_BLACK);
+	PS.gridColor(PS.COLOR_BLACK);
+	PS.statusColor(PS.COLOR_WHITE);
+
+	PS.fade(PS.ALL, PS.ALL, 5);
+	PS.borderFade(PS.ALL, PS.ALL, 5);
 }
 
 /*
@@ -425,26 +523,14 @@ PS.init = function( system, options ) {
 	// default dimensions (8 x 8).
 	// Uncomment the following code line and change
 	// the x and y parameters as needed.
-
-	PS.gridSize(WIDTH, HEIGHT);
-	PS.color(PS.ALL, PS.ALL, PS.COLOR_BLACK);
-	PS.borderColor(PS.ALL, PS.ALL, PS.COLOR_BLACK);
-	PS.gridColor(PS.COLOR_BLACK);
-	PS.statusColor(PS.COLOR_WHITE);
-
-	PS.fade(PS.ALL, PS.ALL, 5);
-	PS.borderFade(PS.ALL, PS.ALL, 5);
-
-	PS.timerStart(2, masterTick);
-
-	WALL_SPAWNER.generateLayout();
+	
 	// This is also a good place to display
 	// your game title or a welcome message
 	// in the status line above the grid.
 	// Uncomment the following code line and
 	// change the string parameter as needed.
 
-	// PS.statusText( "Game" );
+	menuScreen();
 
 	// Add any other initialization code you need here.
 };
@@ -468,6 +554,12 @@ PS.touch = function( x, y, data, options ) {
 	// Add code here for mouse clicks/touches
 	// over a bead.
 
+	if(data == "Play"){
+		playButton();
+	}
+
+	//For when game is being played
+	if(gameState == false) return;
 	if(GHOST_SPAWNER.isGhost(x, y)){
 		GHOST_SPAWNER.removeGhost(x, y);
 	}
@@ -508,6 +600,12 @@ PS.enter = function( x, y, data, options ) {
 
 	// Add code here for when the mouse cursor/touch enters a bead.
 
+	if(data == "Play"){
+		PS.borderColor(x, y, PS.COLOR_WHITE);
+	}
+
+	//For when game is being played
+	if(gameState == false) return;
 	FLASHLIGHT.lightUp(x, y);
 	if(GHOST_SPAWNER.isGhost(x, y)){
 		PS.borderColor(x, y, PS.COLOR_RED);
@@ -530,6 +628,9 @@ PS.exit = function( x, y, data, options ) {
 	// PS.debug( "PS.exit() @ " + x + ", " + y + "\n" );
 
 	// Add code here for when the mouse cursor/touch exits a bead.
+	if(data == "Play"){
+		PS.borderColor(x, y, PS.COLOR_BLACK);
+	}
 };
 
 /*
