@@ -599,7 +599,7 @@ PS.init = function( system, options ) {
 	// change the string parameter as needed.
 
 	PS.statusText( current_moves );
-	PS.timerStart(8, WATER.waterTick)
+	PS.timerStart(5, WATER.waterTick)
 
 	// Add any other initialization code you need here.
 };
