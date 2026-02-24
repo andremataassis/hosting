@@ -193,6 +193,8 @@ var FLASHLIGHT = {
 	light_mod: 90,
 	last: null,
 	all_on: false,
+	thunderChance: 0,
+	thunderOn: false,
 	lightUp: function(x, y){
 		if(FLASHLIGHT.all_on) return;
 		FLASHLIGHT.lightOffLast();
@@ -224,7 +226,7 @@ var FLASHLIGHT = {
 		FLASHLIGHT.all_on = false;
 	},
 	lightTick: function(){
-		FLASHLIGHT.light_mod -= 0.08;
+		FLASHLIGHT.light_mod -= 0.1;
 		FLASHLIGHT.light_mod = clamp(FLASHLIGHT.light_mod, 0, 90);
 		
 		let start = FLASHLIGHT.light_diameter;
@@ -235,6 +237,8 @@ var FLASHLIGHT = {
 			PS.audioPlay("fx_bloink", {volume: 0.05});
 			if(FLASHLIGHT.last) FLASHLIGHT.lightUp(FLASHLIGHT.last.x, FLASHLIGHT.last.y)
 		}
+
+		FLASHLIGHT.chanceOfThunder();
 	},
 	charge:function(){
 		FLASHLIGHT.light_mod += 0.3;
@@ -249,23 +253,61 @@ var FLASHLIGHT = {
 			PS.audioPlay("fx_blip");
 			if(FLASHLIGHT.last) FLASHLIGHT.lightUp(FLASHLIGHT.last.x, FLASHLIGHT.last.y)
 		}
+	},
+	chanceOfThunder(){
+		if(FLASHLIGHT.thunderOn == false) return;
+		let a = PS.random(100000);
+		if(a <= FLASHLIGHT.thunderChance){
+			PS.audioPlay("thunder", {path: "./audio/", fileTypes: ["wav"]});
+			FLASHLIGHT.lightUpAll();
+			FLASHLIGHT.thunderChance = 0;
+
+			TIMER.until = 1;
+			TIMER.i = 0;
+			TIMER.func = FLASHLIGHT.lightOffAll;
+			TIMER.timerReference = PS.timerStart(40, TIMER.tick);
+		}
+		else{
+			FLASHLIGHT.thunderChance++;
+		}
 	}
 }
 
 var SCORE ={
 	score: 0,
+	highscore: 0,
 	incrementScore(){
 		SCORE.score++;
 		PS.statusText(SCORE.score);
+	},
+	storeHighScore(){
+		if(SCORE.score > SCORE.highscore) {
+			localStorage.setItem("hs", SCORE.score);
+			SCORE.highscore = SCORE.score;
+		}
+	},
+	getHighScore(){
+		SCORE.highscore = Number(localStorage.getItem("hs"));
+		return SCORE.highscore;
 	}
 }
 
+const STARTING_COOLDOWN = 80;
 var GHOST_SPAWNER = {
 	ghosts: [],
 	counter: 0,
-	cooldown: 50,
+	g_counter: 0,
+	cooldown: STARTING_COOLDOWN,
 	clear: function(){
-		ghosts = [];
+		GHOST_SPAWNER.ghosts = [];
+		GHOST_SPAWNER.counter = 0;
+		GHOST_SPAWNER.cooldown = STARTING_COOLDOWN;
+		GHOST_SPAWNER.g_counter = 0;
+	},
+	showAllGhosts: function(){
+		for(const ghost of GHOST_SPAWNER.ghosts){
+			PS.glyph(ghost.x, ghost.y, GHOST);
+		}
 	},
 	placeGhost: function(x, y){
 		GHOST_SPAWNER.ghosts.push({x: x, y: y});
@@ -305,8 +347,17 @@ var GHOST_SPAWNER = {
 		GHOST_SPAWNER.counter++;
 		GHOST_SPAWNER.spawnGhosts();
 
+		GHOST_SPAWNER.increaseDifficulty();
+
 		if(GHOST_SPAWNER.ghosts.length >= 15){
 			gameOver();
+		}
+	},
+	increaseDifficulty: function(){
+		GHOST_SPAWNER.g_counter++;
+		if(GHOST_SPAWNER.g_counter % 300 === 0){
+			PS.audioPlay("scarysound", {path: "./audio/", fileTypes: ["wav"]});
+			GHOST_SPAWNER.cooldown = clamp(GHOST_SPAWNER.cooldown - 5, 20, STARTING_COOLDOWN);
 		}
 	},
 	spawnGhosts: function(){
@@ -328,7 +379,7 @@ var GHOST_SPAWNER = {
 var WALL_SPAWNER = {
 	walls: [],
 	clear: function(){
-		walls = [];
+		WALL_SPAWNER.walls = [];
 	},
 	placeWall: function(x, y){
 		WALL_SPAWNER.walls.push({x: x, y: y});
@@ -420,8 +471,11 @@ function playRandomGhostSpawnSound(){
 }
 
 function menuScreen(){
-	PS.statusText( "Ghost Game" );
+	PS.statusText( "Unhaunt the Mansion" );
 	
+	PS.debugClear();
+	PS.debug("Highscore: " + SCORE.getHighScore());
+
 	GHOST_SPAWNER.clear();
 	WALL_SPAWNER.clear();
 	PS.gridSize(5, 5);
@@ -435,8 +489,20 @@ function menuScreen(){
 
 function gameOver(){
 	FLASHLIGHT.lightUpAll();
+	FLASHLIGHT.thunderOn = false;
+	GHOST_SPAWNER.showAllGhosts();
 	PS.timerStop(masterID);
 	gameState = false;
+
+	SCORE.storeHighScore();
+
+	PS.statusText("The ghosts took over!");
+	PS.debug("Score: " + SCORE.score);
+
+	TIMER.until = 3;
+	TIMER.i = 0;
+	TIMER.func = menuScreen;
+	TIMER.timerReference = PS.timerStart(60, TIMER.tick);
 }
 
 var TIMER ={
@@ -460,7 +526,10 @@ function introSequence(){
 	PS.fade(PS.ALL, PS.ALL, 80);
 	PS.borderFade(PS.ALL, PS.ALL, 80);
 
+	PS.statusText("Don't let the ghosts take over!");
+
 	TIMER.until = 3;
+	TIMER.i = 0;
 	TIMER.func = setFadeToNormal;
 	TIMER.timerReference = PS.timerStart(60, TIMER.tick);
 }
@@ -470,15 +539,19 @@ function setFadeToNormal(){
 	
 	PS.fade(PS.ALL, PS.ALL, 5);
 	PS.borderFade(PS.ALL, PS.ALL, 5);
+	FLASHLIGHT.thunderOn = true;
 }
 
 function playButton(){
 	PS.gridSize(WIDTH, HEIGHT);
 	setGridOptions();
-	PS.statusText("0");
 	
 	masterID = PS.timerStart(2, masterTick);
+	SCORE.score = 0;
 	gameState = true;
+
+	PS.debugClear();
+	PS.debugClose();
 
 	introSequence();
 }
