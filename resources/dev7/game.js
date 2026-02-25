@@ -262,10 +262,7 @@ var FLASHLIGHT = {
 			FLASHLIGHT.lightUpAll();
 			FLASHLIGHT.thunderChance = 0;
 
-			TIMER.until = 1;
-			TIMER.i = 0;
-			TIMER.func = FLASHLIGHT.lightOffAll;
-			TIMER.timerReference = PS.timerStart(40, TIMER.tick);
+			TIMER.startTimer(1, FLASHLIGHT.lightOffAll, 40);
 		}
 		else{
 			FLASHLIGHT.thunderChance++;
@@ -499,10 +496,7 @@ function gameOver(){
 	PS.statusText("The ghosts took over!");
 	PS.debug("Score: " + SCORE.score);
 
-	TIMER.until = 3;
-	TIMER.i = 0;
-	TIMER.func = menuScreen;
-	TIMER.timerReference = PS.timerStart(60, TIMER.tick);
+	TIMER.startTimer(3, menuScreen, 60);
 }
 
 var TIMER ={
@@ -516,7 +510,13 @@ var TIMER ={
 			PS.timerStop(TIMER.timerReference);
 			TIMER.func();
 		}
-	}
+	},
+	startTimer: function(until, functionToDo, tick){
+      TIMER.until = until;
+      TIMER.i = 0;
+      TIMER.func = functionToDo;
+      TIMER.timerReference = PS.timerStart(tick, TIMER.tick);
+    }
 }
 
 function introSequence(){
@@ -528,10 +528,7 @@ function introSequence(){
 
 	PS.statusText("Don't let the ghosts take over!");
 
-	TIMER.until = 3;
-	TIMER.i = 0;
-	TIMER.func = setFadeToNormal;
-	TIMER.timerReference = PS.timerStart(60, TIMER.tick);
+	TIMER.startTimer(3, setFadeToNormal, 60);
 }
 
 function setFadeToNormal(){
