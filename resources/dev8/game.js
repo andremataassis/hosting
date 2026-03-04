@@ -224,7 +224,7 @@ var FLASHLIGHT = {
 	},
 	updateBeadData: function(beads, newData){
 		for(const bead of beads){
-			if(PS.data(bead.x, bead.y) === "charge") continue;
+			if(PS.data(bead.x, bead.y) === "UI") continue;
 			PS.data(bead.x, bead.y, newData);
 		}
 	},
@@ -380,6 +380,7 @@ var GHOST_SPAWNER = {
 
 		GHOST_SPAWNER.increaseDifficulty();
 
+		GHOST_SPAWNER.displayGhostLevel();
 		if(GHOST_SPAWNER.ghosts.length >= 15){
 			gameOver();
 		}
@@ -419,6 +420,21 @@ var GHOST_SPAWNER = {
 			GHOST_SPAWNER.placeGhost(newPos.x, newPos.y);
 			PS.color(ghost.x, ghost.y, PS.COLOR_WHITE);
 			PS.audioPlay("fx_jump3", {volume: 0.05});
+		}
+	},
+	displayGhostLevel: function(){
+		let fillUpTo = GHOST_SPAWNER.ghosts.length;
+		for(let i = 0; i < 15; i++){
+			if(i < fillUpTo){
+				PS.color(i, HEIGHT - 1, PS.COLOR_RED);
+				PS.borderColor(i, HEIGHT - 1, PS.COLOR_ORANGE);
+				PS.glyph(i, HEIGHT - 1, GHOST);
+			}
+			else {
+				PS.color(i, HEIGHT - 1, PS.COLOR_GRAY_LIGHT);
+				PS.borderColor(i, HEIGHT - 1, PS.COLOR_BLACK);
+				PS.glyph(i, HEIGHT - 1, PS.DEFAULT);
+			}
 		}
 	}
 }
@@ -602,7 +618,8 @@ function setFadeToNormal(){
 
 function playButton(){
 	PS.gridSize(WIDTH, HEIGHT);
-	PS.data(PS.ALL, 0, "charge");
+	PS.data(PS.ALL, 0, "UI");
+	PS.data(PS.ALL, HEIGHT - 1, "UI");
 	setGridOptions();
 	FLASHLIGHT.reset();
 	
